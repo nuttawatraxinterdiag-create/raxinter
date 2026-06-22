@@ -11,11 +11,18 @@ const WORKLOAD_CHART_FALLBACK_HEIGHT = 300;
 const LIS_STATUS_ORDER = [
   "Request",
   "Analyzing",
-  "Result sent",
+  "Result",
   "Report",
-  "Approve",
   "Completed",
 ];
+
+const LIS_STATUS_PRIORITY = {
+  Request: 1,
+  Analyzing: 2,
+  Result: 3,
+  Report: 4,
+  Completed: 5,
+};
 
 const PCTAG_DEFINITIONS = [
   { value: "ASAP",    label: "ASAP",    target: 15 },
@@ -29,12 +36,13 @@ const STATUS_CLASS = {
   Pending:        "status-request",
   Analyzing:      "status-analyzing",
   Processing:     "status-analyzing",
+  Result:         "status-result-sent",
   "Result sent":  "status-result-sent",
   Resulted:       "status-result-sent",
   Report:         "status-report",
   Review:         "status-report",
   "Awaiting report": "status-report",
-  Approve:        "status-approve",
+  Approve:        "status-completed",
   Approved:       "status-approve",
   Completed:      "status-completed",
 };
@@ -43,37 +51,15 @@ const STATUS_CLASS = {
 const STATUS_FILL_CLASS = {
   Request:        "ss-fill-request",
   Analyzing:      "ss-fill-analyzing",
+  Result:         "ss-fill-result-sent",
   "Result sent":  "ss-fill-result-sent",
   Report:         "ss-fill-report",
-  Approve:        "ss-fill-approve",
   Completed:      "ss-fill-completed",
 };
 
 /* ══════════════════════════════════════════════════════════
    SAMPLE DATA  (mock — replaced by live API)
 ══════════════════════════════════════════════════════════ */
-const SAMPLE_ROWS = [
-  ["PWL","1300312125","LN-240616-001","HN-102844","Anan W.",      "HEM","CBC",           "STAT",    "Analyzing",   "Analyzing",   27, 30, "Alinity i"],
-  ["PWL","1300312126","LN-240616-002","HN-103512","Kanya S.",     "ICH","Troponin I",    "ASAP",    "Analyzing",   "Analyzing",   14, 15, "Cobas 6000_1"],
-  ["PWL","1300312127","LN-240616-003","HN-104179","Arisa M.",     "MIC","Blood culture", "ROUTINE", "Analyzing",   "Analyzing",   78, 90, "BD FACSlyric"],
-  ["PWL","1300312128","LN-240616-004","HN-105612","Ploy R.",      "ICH","HbA1c",         "ROUTINE", "Request",     "Request",     18, 90, "BioRad D100"],
-  ["PWL","1300312129","LN-240616-005","HN-105711","Narin C.",     "MOL","HIV Viral Load","STAT",    "Result sent", "Result sent", 33, 30, "Cobas c6800"],
-  ["PWL","1300312130","LN-240616-006","HN-106003","Nicha P.",     "HEM","PT / INR",      "STAT",    "Report",      "Report",      29, 30, "ACL TOP"],
-  ["PWL","1300312131","LN-240616-007","HN-106185","Suda K.",      "IMM","HBsAg",         "ROUTINE", "Completed",   "Approve",     42, 90, "Alinity i"],
-  ["PWL","1300312132","LN-240616-008","HN-106422","Mali K.",      "HEM","Blood film",    "ASAP",    "Report",      "Report",      13, 15, "Manual"],
-  ["PWL","1300312133","LN-240616-009","HN-106511","Tanet R.",     "MIC","Gram stain",    "STAT",    "Result sent", "Result sent", 34, 30, "Manual"],
-  ["PWL","1300312134","LN-240616-010","HN-106777","Wichai L.",    "ICH","Electrolyte",   "STAT",    "Completed",   "Approve",     21, 30, "Cobas 6000_2"],
-  ["PWL","1300312135","LN-240616-011","HN-107002","Benya C.",     "IMM","CRP",           "STAT",    "Analyzing",   "Analyzing",   25, 30, "Alinity i"],
-  ["PWL","1300312136","LN-240616-012","HN-107118","Prasert N.",   "MOL","COVID PCR",     "ROUTINE", "Request",     "Request",      9, 90, "Cobas c6800"],
-  ["PWL","1300312137","LN-240616-013","HN-107322","Jira S.",      "HEM","ESR",           "ROUTINE", "Completed",   "Approve",     54, 90, "Manual"],
-  ["PWL","1300312138","LN-240616-014","HN-107490","Pim A.",       "ICH","Glucose",       "ROUTINE", "Report",      "Report",      96, 90, "Cobas 6000_1"],
-  ["PWL","1300312139","LN-240616-015","HN-107703","Supaporn T.",  "MIC","Urine culture", "ROUTINE", "Analyzing",   "Analyzing",   66, 90, "BD FACSlyric"],
-  ["PWL","1300312140","LN-240616-016","HN-108033","Santi M.",     "SER","Dengue NS1",    "STAT",    "Result sent", "Result sent", 28, 30, "LabXpert EH-209"],
-  ["PWL","1300312141","LN-240616-017","HN-108407","Rada W.",      "SER","VDRL",          "ROUTINE", "Completed",   "Approve",     49, 90, "LabXpert EH-209"],
-  ["PWL","1300312142","LN-240616-018","HN-108735","Thana B.",     "MOL","HBV Viral Load","ROUTINE", "Analyzing",   "Analyzing",  102, 90, "Cobas c6800"],
-  ["Alliance","2300311101","LN-240616-101","HN-201144","Alliance A.","HEM","CBC",        "STAT",    "Analyzing",   "Analyzing",   22, 30, "Alinity i"],
-  ["Corporate","3300311102","LN-240616-201","HN-301144","Corporate B.","ICH","Troponin I","ASAP",   "Report",      "Report",      18, 15, "Cobas 6000_1"],
-].map(arrayRowToObject).map(normalizeRow);
 
 /* ══════════════════════════════════════════════════════════
    STATE
@@ -91,11 +77,14 @@ let isViewRotationPaused   = false;
 let isPointerInsideDashboard = false;
 
 const state = {
-  account:         "PWL",
-  allRows:         SAMPLE_ROWS,
-  date:            formatDateInputValue(),
+  account:         "all",
+  allRows:         [],
+  date:            "",
   dashboardLoading: false,
-  latestSource:    "sample",
+  lastUpdatedAt:   null,
+  latestSource:    "idle",
+  latestTrendKey:  "",
+  latestTrend:     [],
   priority:        "all",
   search:          "",
   section:         "all",
@@ -109,32 +98,38 @@ const elements = {
   accountFilter:      document.querySelector("#accountFilter"),
   actionBoardTotal:   document.querySelector("#actionBoardTotal"),
   billboardControls:  [...document.querySelectorAll("[data-billboard-target]")],
+  completedTotal:     document.querySelector("#completedTotal"),
   dashboardScreen:    document.querySelector(".dashboard-screen"),
   dateFilter:         document.querySelector("#dateFilter"),
   lastUpdated:        document.querySelector("#lastUpdated"),
   liveBadge:          document.querySelector("#liveBadge"),
   liveClock:          document.querySelector("#liveClock"),
   overList:           document.querySelector("#overList"),
+  overSummaryTotal:   document.querySelector("#overSummaryTotal"),
   overTotal:          document.querySelector("#overTotal"),
+  pendingTotal:       document.querySelector("#pendingTotal"),
   priorityFilter:     document.querySelector("#priorityFilter"),
   refreshBtn:         document.querySelector("#refreshBtn"),
   searchInput:        document.querySelector("#searchInput"),
-  sectionStatusStrip: document.querySelector("#sectionStatusStrip"),
-  sectionStatusTotal: document.querySelector("#sectionStatusTotal"),
   sectionTabs:        document.querySelector("#sectionTabs"),
   warningList:        document.querySelector("#warningList"),
+  warningSummaryTotal: document.querySelector("#warningSummaryTotal"),
   warningTotal:       document.querySelector("#warningTotal"),
 
-  /* Dashboard 1 new elements */
-  zoneOkCount:        document.querySelector("#zoneOkCount"),
-  zoneWarningCount:   document.querySelector("#zoneWarningCount"),
-  zoneOverCount:      document.querySelector("#zoneOverCount"),
-  zoneOkBars:         document.querySelector("#zoneOkBars"),
-  zoneWarningBars:    document.querySelector("#zoneWarningBars"),
-  zoneOverBars:       document.querySelector("#zoneOverBars"),
+  /* Dashboard 1 priority cards */
+  priorityCriticalCount: document.querySelector("#priorityCriticalCount"),
+  priorityCriticalSub:   document.querySelector("#priorityCriticalSub"),
+  priorityCriticalBars:  document.querySelector("#priorityCriticalBars"),
+  priorityUrgentCount:   document.querySelector("#priorityUrgentCount"),
+  priorityUrgentSub:     document.querySelector("#priorityUrgentSub"),
+  priorityUrgentBars:    document.querySelector("#priorityUrgentBars"),
+  priorityRoutineCount:  document.querySelector("#priorityRoutineCount"),
+  priorityRoutineSub:    document.querySelector("#priorityRoutineSub"),
+  priorityRoutineBars:   document.querySelector("#priorityRoutineBars"),
   tatStats:           document.querySelector("#tatStats"),
   statusTotalLabel:   document.querySelector("#statusTotalLabel"),
   statusSummaryList:  document.querySelector("#statusSummaryList"),
+  chartTooltip:       document.querySelector("#chartTooltip"),
   workloadChart:      document.querySelector("#workloadChart"),
 
   /* Alert panels */
@@ -182,6 +177,7 @@ function normalizeRow(row = {}, index = 0) {
 
   return {
     account:      String(row.account || row.customer || row.accountCustomer || "PWL"),
+    orderedAt:    row.orderedAt || row.ordered_at || "",
     sampleNo:     String(row.sampleNo || row.sample_no || row.specimenNo || row.id || `SAMPLE-${index + 1}`),
     requestNo:    String(row.requestNo || row.request_no || row.ln || row.labNo || row.id || `LN-${index + 1}`),
     hn:           String(row.hn || row.HN || row.patientNo || `HN-${100000 + index}`),
@@ -221,9 +217,9 @@ function normalizeProcessStage(value) {
 function normalizeLisStatus(value) {
   const text = String(value || "").trim().toLowerCase();
   if (text.includes("complete") || text.includes("release")) return "Completed";
-  if (text.includes("approve")) return "Approve";
+  if (text.includes("approve")) return "Completed";
   if (text.includes("report") || text.includes("verify") || text.includes("review") || text.includes("await")) return "Report";
-  if (text.includes("result")) return "Result sent";
+  if (text.includes("result")) return "Result";
   if (text.includes("analy") || text.includes("process") || text.includes("incubat") || text.includes("scan")) return "Analyzing";
   return "Request";
 }
@@ -262,17 +258,26 @@ function getStatusBorderClass(rowOrStatus) {
   return `border-${getStatusClass(rowOrStatus)}`;
 }
 
+function getDominantLisStatus(rows) {
+  const status = rows.reduce((best, row) => {
+    const current = row.lisStatus;
+    if (!best) return current;
+    const currentPriority = LIS_STATUS_PRIORITY[current] || 0;
+    const bestPriority    = LIS_STATUS_PRIORITY[best] || 0;
+    if (currentPriority !== bestPriority) return currentPriority > bestPriority ? current : best;
+    const currentElapsed = Number(row.elapsedTat || 0);
+    const bestElapsed    = Number(rows.find((item) => item.lisStatus === best)?.elapsedTat || 0);
+    return currentElapsed > bestElapsed ? current : best;
+  }, "");
+
+  return { label: status, className: getStatusClass(status), borderClass: getStatusBorderClass(status) };
+}
+
 function getDominantSectionStatus(rows) {
   if (rows.some(isOverTat))    return { label: "Over TAT", className: "status-over-tat",  borderClass: "border-status-over-tat" };
   if (rows.some(isWarningTat)) return { label: "Warning",  className: "status-warning",   borderClass: "border-status-warning" };
 
-  const counts = LIS_STATUS_ORDER.reduce((acc, status) => {
-    acc[status] = rows.filter((row) => row.lisStatus === status).length;
-    return acc;
-  }, {});
-  const status = [...LIS_STATUS_ORDER].sort((a, b) => counts[b] - counts[a])[0] || "Request";
-
-  return { label: status, className: getStatusClass(status), borderClass: getStatusBorderClass(status) };
+  return getDominantLisStatus(rows);
 }
 
 function getVisibleRows() {
@@ -353,6 +358,55 @@ function sortByRisk(rows) {
   });
 }
 
+function getRequestBoardEntries(rows) {
+  return Object.values(groupRows(rows, (row) => `${row.requestNo}::${row.hn}`))
+    .map((group) => {
+      const sortedRows   = sortByRisk(group);
+      const activeRows   = sortedRows.filter((row) => !isCompleted(row));
+      const primaryRow   = activeRows[0] || sortedRows[0] || group[0];
+      const allCompleted = group.every(isCompleted);
+      const hasOver      = group.some(isOverTat);
+      const hasWarning   = !hasOver && group.some((row) => !isCompleted(row) && (isWarningTat(row) || row.pctag === "ASAP"));
+      const tatState     = hasOver ? "over" : hasWarning ? "warning" : allCompleted ? "completed" : "pending";
+      const currentStatus = allCompleted
+        ? { label: "Completed", className: "status-completed", borderClass: "border-status-completed" }
+        : getDominantLisStatus(group);
+
+      const sections = Object.entries(groupRows(group, (row) => row.section))
+        .map(([section, sectionRows]) => ({
+          count: sectionRows.length,
+          section,
+          status: getDominantLisStatus(sectionRows),
+        }))
+        .sort((a, b) => a.section.localeCompare(b.section));
+
+      return {
+        allCompleted,
+        currentStatus,
+        elapsedTat: primaryRow.elapsedTat,
+        hn: primaryRow.hn,
+        overBy: Math.max(0, ...group.map((row) => row.elapsedTat - row.targetTat)),
+        patient: primaryRow.patient,
+        pctag: primaryRow.pctag,
+        processStage: primaryRow.processStage,
+        requestNo: primaryRow.requestNo,
+        rows: group,
+        sampleCount: group.length,
+        sections,
+        targetLeft: activeRows.length ? Math.min(...activeRows.map((row) => Math.max(0, row.targetTat - row.elapsedTat))) : 0,
+        targetTat: primaryRow.targetTat,
+        tatState,
+      };
+    })
+    .sort((a, b) => {
+      const stateRank = { over: 3, warning: 2, pending: 1, completed: 0 };
+      return stateRank[b.tatState] - stateRank[a.tatState]
+        || b.overBy - a.overBy
+        || a.targetLeft - b.targetLeft
+        || a.requestNo.localeCompare(b.requestNo);
+    });
+}
+
 /* ══════════════════════════════════════════════════════════
    RENDER — FILTERS & SECTION TABS
 ══════════════════════════════════════════════════════════ */
@@ -364,8 +418,7 @@ function render() {
   renderSectionTabs();
   renderDashboard1(rows, stats);
   renderActionBoards(rows);
-  renderSectionStatusStrip(rows);
-  updateLastUpdatedLabel(new Date());
+  updateLastUpdatedLabel(state.lastUpdatedAt || new Date());
 }
 
 function renderFilters() {
@@ -397,7 +450,7 @@ function renderSectionTabs() {
   const sections = getSectionSummary(rows);
 
   elements.sectionTabs.innerHTML = [
-    sectionTabTemplate({ active: state.section === "all", count: rows.length, label: "ทั้งหมด", section: "all", statusClass: "status-request" }),
+    sectionTabTemplate({ active: state.section === "all", count: rows.length, label: "All", section: "all", statusClass: "status-request" }),
     ...sections.map((section) => sectionTabTemplate({
       active: state.section === section.section,
       count:  section.total,
@@ -422,7 +475,7 @@ function sectionTabTemplate({ active, count, label, section, statusClass }) {
    RENDER — DASHBOARD 1  (all 4 rules)
 ══════════════════════════════════════════════════════════ */
 function renderDashboard1(rows, stats) {
-  renderZoneCards(rows, stats);
+  renderPriorityCards(rows);
   renderTatStats(rows);
   renderStatusSummary(rows, stats);
   renderWorkloadChart(rows);
@@ -460,6 +513,60 @@ function renderZoneCards(rows, stats) {
   zoneBars((r) => !isOverTat(r) && !isWarningTat(r) && !isCompleted(r), elements.zoneOkBars);
   zoneBars(isWarningTat, elements.zoneWarningBars);
   zoneBars(isOverTat,    elements.zoneOverBars);
+}
+
+function renderPriorityCards(rows) {
+  const visibleSections = getAlertSections(rows, rows);
+
+  const cards = [
+    {
+      pctag: "ASAP",
+      countEl: elements.priorityCriticalCount,
+      subEl: elements.priorityCriticalSub,
+      barsEl: elements.priorityCriticalBars,
+    },
+    {
+      pctag: "STAT",
+      countEl: elements.priorityUrgentCount,
+      subEl: elements.priorityUrgentSub,
+      barsEl: elements.priorityUrgentBars,
+    },
+    {
+      pctag: "ROUTINE",
+      countEl: elements.priorityRoutineCount,
+      subEl: elements.priorityRoutineSub,
+      barsEl: elements.priorityRoutineBars,
+    },
+  ];
+
+  cards.forEach(({ pctag, countEl, subEl, barsEl }) => {
+    const priorityRows = rows.filter((row) => row.pctag === pctag && !isCompleted(row));
+    const withinRows = priorityRows.filter((row) => !isOverTat(row));
+    const withinPct = priorityRows.length
+      ? Math.round((withinRows.length / priorityRows.length) * 100)
+      : 0;
+
+    if (countEl) countEl.textContent = formatNumber(priorityRows.length);
+    if (subEl) subEl.textContent = `Within target ${withinPct}%`;
+    if (!barsEl) return;
+
+    barsEl.innerHTML = visibleSections.length
+      ? visibleSections.map((section) => {
+          const sectionRows = priorityRows.filter((row) => row.section === section);
+          const sectionWithin = sectionRows.filter((row) => !isOverTat(row)).length;
+          const sectionPct = sectionRows.length
+            ? Math.round((sectionWithin / sectionRows.length) * 100)
+            : 0;
+          return `
+            <div class="zone-bar-row">
+              <span class="bar-label">${h(section)}</span>
+              <div class="zone-bar-track"><div class="zone-bar-fill" style="width:${sectionPct}%"></div></div>
+              <span class="bar-pct">${sectionPct}%</span>
+            </div>
+          `;
+        }).join("")
+      : `<div class="empty-state">No section data</div>`;
+  });
 }
 
 /* ── TAT stats ─────────────────────────────────────────── */
@@ -510,38 +617,83 @@ function renderStatusSummary(rows, stats) {
     const count      = rows.filter((r) => r.lisStatus === status).length;
     const pct        = total ? Math.round((count / total) * 100) : 0;
     const fillClass  = STATUS_FILL_CLASS[status] || "ss-fill-request";
-    const statusClass = getStatusClass(status);
-    const circumference = 2 * Math.PI * 16;
-    const offset = circumference - (pct / 100) * circumference;
 
     return `
       <div class="status-summary-row">
-        <div class="gauge-container">
-          <svg class="status-gauge" viewBox="0 0 40 40">
-            <circle class="gauge-bg" cx="20" cy="20" r="16" fill="none" stroke="var(--panel-lift)" stroke-width="4"/>
-            <circle class="gauge-fill ${h(fillClass)}" cx="20" cy="20" r="16" fill="none" stroke-width="4" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round" transform="rotate(-90 20 20)"/>
-          </svg>
-          <span class="gauge-pct">${pct}%</span>
+        <div class="ss-row-head">
+          <span class="ss-label">${h(status)}</span>
+          <span class="ss-count">${formatNumber(count)}</span>
         </div>
-        <span class="ss-label">${h(status)}</span>
-        <span class="ss-count">${formatNumber(count)}</span>
+        <div class="ss-track">
+          <div class="ss-fill ${h(fillClass)}" style="width:${pct}%"></div>
+        </div>
       </div>
     `;
   }).join("");
 }
 
 /* ── Workload chart (canvas SVG-style) ─────────────────── */
+function normalizeTrendRows(rows = []) {
+  return rows.map((row) => {
+    const hourMatch = String(row?.hour || "").match(/(\d{1,2})/);
+    const hour = hourMatch ? Math.max(0, Math.min(23, Number(hourMatch[1]))) : null;
+
+    return {
+      approved: positiveNumber(row?.approved, 0),
+      avg: positiveNumber(row?.avg, 0),
+      hour,
+      onTime: positiveNumber(row?.onTime, 0),
+      received: positiveNumber(row?.received, 0),
+    };
+  }).filter((row) => row.hour !== null);
+}
+
+function getHourBucket(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.getHours();
+
+  const text = String(value || "").trim();
+  const match = text.match(/(\d{1,2}):(\d{2})/);
+  if (match) return Math.max(0, Math.min(23, Number(match[1])));
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getHours();
+}
+
+function getHourlyChartSeries(rows) {
+  const emptySeries = chartHourBuckets.map(() => 0);
+  const canUseTrend = state.latestTrendKey === getDashboardQueryKey();
+  const fromTrend = state.latestTrend.reduce((series, point) => {
+    if (!Number.isInteger(point.hour)) return series;
+    if (point.received > 0) series.received[point.hour] = point.received;
+    if (point.approved > 0) series.approved[point.hour] = point.approved;
+    return series;
+  }, { received: [...emptySeries], approved: [...emptySeries] });
+
+  const hasTrendCounts = fromTrend.received.some(Boolean) || fromTrend.approved.some(Boolean);
+  if (canUseTrend && hasTrendCounts) return fromTrend;
+
+  return rows.reduce((series, row) => {
+    const hour = getHourBucket(row.orderedAt);
+    if (hour === null) return series;
+    series.received[hour] += 1;
+    if (isCompleted(row)) series.approved[hour] += 1;
+    return series;
+  }, { received: [...emptySeries], approved: [...emptySeries] });
+}
+
 let chartAnimFrame = null;
 const chartHourBuckets = Array.from({ length: 24 }, (_, i) => i);
 
 function renderWorkloadChart(rows) {
   const canvas = elements.workloadChart;
   if (!canvas) return;
+  hideChartTooltip();
 
   /* Use requestAnimationFrame so canvas dims are settled */
   if (chartAnimFrame) cancelAnimationFrame(chartAnimFrame);
   chartAnimFrame = requestAnimationFrame(function () {
     drawChart(canvas, rows);
+    bindWorkloadChartHover(canvas, rows);
   });
 }
 
@@ -572,15 +724,15 @@ function drawChart(canvas, rows) {
   const W      = Math.max(320, Math.round(rect.width || canvas.parentElement?.clientWidth || 600));
   const cssH   = Number.parseFloat(window.getComputedStyle(canvas).height);
   const H      = Math.round((Number.isFinite(cssH) && cssH > 0 ? cssH : rect.height) || WORKLOAD_CHART_FALLBACK_HEIGHT);
-
-  /* Group rows into 24 hour buckets by elapsed (mock distribution) */
-  const received = chartHourBuckets.map((h) => rows.filter((r) => Math.floor(r.elapsedTat / 4) % 24 === h).length);
-  const approved = chartHourBuckets.map((h) => rows.filter((r) => isCompleted(r) && Math.floor(r.elapsedTat / 5) % 24 === h).length);
+  const seriesData = getHourlyChartSeries(rows);
+  const received = seriesData.received;
+  const approved = seriesData.approved;
 
   const maxVal = Math.max(1, ...received, ...approved);
   const padL = 28, padR = 12, padT = 12, padB = 30;
   const cW = W - padL - padR;
   const cH = H - padT - padB;
+  const activeIndex = Number.isInteger(canvas.__chartActiveIndex) ? canvas.__chartActiveIndex : null;
 
   function xPos(i) { return padL + (i / (chartHourBuckets.length - 1)) * cW; }
   function yPos(v) { return padT + cH - (v / maxVal) * cH; }
@@ -608,8 +760,25 @@ function drawChart(canvas, rows) {
     <text x="${xPos(h).toFixed(2)}" y="${(H - padB + 14).toFixed(2)}" fill="rgba(107,135,166,0.9)" font-family="Cascadia Mono, SFMono-Regular, Consolas, monospace" font-size="10" text-anchor="middle">${h}</text>
   `).join("");
 
+  const hoverMarkup = activeIndex !== null ? `
+    <line x1="${xPos(activeIndex).toFixed(2)}" y1="${padT}" x2="${xPos(activeIndex).toFixed(2)}" y2="${(padT + cH).toFixed(2)}" stroke="rgba(240,247,255,0.18)" stroke-width="1.2" stroke-dasharray="5 4"></line>
+    <circle cx="${xPos(activeIndex).toFixed(2)}" cy="${yPos(received[activeIndex]).toFixed(2)}" r="4.5" fill="var(--page)" stroke="rgba(255,61,61,0.98)" stroke-width="2"></circle>
+    <circle cx="${xPos(activeIndex).toFixed(2)}" cy="${yPos(approved[activeIndex]).toFixed(2)}" r="4.5" fill="var(--page)" stroke="rgba(79,195,247,0.98)" stroke-width="2"></circle>
+  ` : "";
+
   canvas.setAttribute("viewBox", `0 0 ${W} ${H}`);
   canvas.setAttribute("preserveAspectRatio", "none");
+  canvas.__chartSeries = {
+    received,
+    approved,
+    width: W,
+    height: H,
+    padL,
+    padR,
+    padT,
+    padB,
+    chartWidth: cW,
+  };
   canvas.innerHTML = `
     <g aria-hidden="true">
       ${gridLines}
@@ -617,9 +786,78 @@ function drawChart(canvas, rows) {
       <path d="${smoothAreaPath(approved)}" fill="rgba(79,195,247,0.10)"></path>
       <path d="${smoothLinePath(received)}" fill="none" stroke="rgba(255,61,61,0.9)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
       <path d="${smoothLinePath(approved)}" fill="none" stroke="rgba(79,195,247,0.9)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
+      ${hoverMarkup}
       ${hourLabels}
     </g>
   `;
+}
+
+function bindWorkloadChartHover(canvas, rows) {
+  if (!canvas || canvas.__chartHoverBound) return;
+  canvas.__chartHoverBound = true;
+
+  canvas.addEventListener("mousemove", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const series = canvas.__chartSeries;
+    if (!series || !rect.width) return;
+
+    const rawX = event.clientX - rect.left;
+    const relativeX = Math.min(series.chartWidth, Math.max(0, rawX - series.padL));
+    const activeIndex = Math.round((relativeX / Math.max(1, series.chartWidth)) * (chartHourBuckets.length - 1));
+
+    if (canvas.__chartActiveIndex !== activeIndex) {
+      canvas.__chartActiveIndex = activeIndex;
+      drawChart(canvas, getVisibleRows());
+    }
+
+    updateChartTooltip(event, canvas, activeIndex);
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    canvas.__chartActiveIndex = null;
+    hideChartTooltip();
+    drawChart(canvas, getVisibleRows());
+  });
+}
+
+function updateChartTooltip(event, canvas, activeIndex) {
+  const tooltip = elements.chartTooltip;
+  const panel = canvas.parentElement;
+  const series = canvas.__chartSeries;
+  if (!tooltip || !panel || !series) return;
+
+  const hour = String(chartHourBuckets[activeIndex]).padStart(2, "0");
+  const receivedValue = series.received[activeIndex] || 0;
+  const approvedValue = series.approved[activeIndex] || 0;
+
+  tooltip.hidden = false;
+  tooltip.innerHTML = `
+    <div class="chart-tooltip-time">${h(hour)}:00</div>
+    <div class="chart-tooltip-row">
+      <span class="chart-tooltip-dot received"></span>
+      <span>Received</span>
+      <span class="chart-tooltip-value">${formatNumber(receivedValue)}</span>
+    </div>
+    <div class="chart-tooltip-row">
+      <span class="chart-tooltip-dot approved"></span>
+      <span>Approved</span>
+      <span class="chart-tooltip-value">${formatNumber(approvedValue)}</span>
+    </div>
+  `;
+
+  const panelRect = panel.getBoundingClientRect();
+  const desiredLeft = event.clientX - panelRect.left + 14;
+  const desiredTop = event.clientY - panelRect.top - 18;
+  const maxLeft = Math.max(10, panel.clientWidth - tooltip.offsetWidth - 10);
+  const maxTop = Math.max(10, panel.clientHeight - tooltip.offsetHeight - 10);
+
+  tooltip.style.left = `${Math.min(maxLeft, Math.max(10, desiredLeft))}px`;
+  tooltip.style.top = `${Math.min(maxTop, Math.max(52, desiredTop))}px`;
+}
+
+function hideChartTooltip() {
+  if (!elements.chartTooltip) return;
+  elements.chartTooltip.hidden = true;
 }
 
 /* ── Alert panels (Bottom zone — Photo 1 style) ─────────── */
@@ -640,106 +878,192 @@ function renderAlertPanels(rows, stats) {
   elements.warnTimeBadge.textContent     = formatNumber(warnRows.length);
   elements.overWarrantyBadge.textContent = formatNumber(overRows.length);
 
-  /* Urgent section labels */
-  const sections = [...new Set(rows.map((r) => r.section))].slice(0, 3);
-  function sectionLabelRow(el) {
-    el.innerHTML = sections.map((s) => `<span class="alert-section-label">${h(s)}</span>`).join("");
-  }
-  sectionLabelRow(elements.urgentSectionRow);
-  sectionLabelRow(elements.criticalSectionRow);
-  sectionLabelRow(elements.warnTimeSectionRow);
+  const sections = getAlertSections(rows, [...asapRows, ...statRows, ...critRows, ...warnRows]);
+  renderAlertSectionLabels(elements.urgentSectionRow, sections);
+  renderAlertSectionLabels(elements.criticalSectionRow, sections);
+  renderAlertSectionLabels(elements.warnTimeSectionRow, sections);
 
-  /* Render chip grids grouped by section */
-  function renderChipGrid(targetRows, el, maxChips = 30) {
-    const sorted = sortByRisk(targetRows).slice(0, maxChips);
-    if (!sorted.length) {
-      el.innerHTML = `<div class="empty-state" style="min-height:60px;font-size:0.68rem">None</div>`;
-      return;
-    }
-    el.innerHTML = sorted.map((row) => sampleChip(row)).join("");
-  }
-
-  const urgentAll = sortByRisk([...asapRows, ...statRows.filter((r) => isOverTat(r) || isWarningTat(r))]);
-  renderChipGrid(urgentAll.length ? urgentAll : asapRows, elements.urgentChips);
-  renderChipGrid(critRows,  elements.criticalChips);
-  renderChipGrid(warnRows,  elements.warnTimeChips);
-
-  /* Over warranty — larger row style */
-  if (!overRows.length) {
-    elements.overWarrantyChips.innerHTML = `<div class="empty-state" style="min-height:60px;font-size:0.68rem">None</div>`;
-  } else {
-    elements.overWarrantyChips.innerHTML = sortByRisk(overRows).slice(0, 10).map((row) => {
-      const overBy = Math.max(0, row.elapsedTat - row.targetTat);
-      return `
-        <div class="over-chip-row">
-          <div>
-            <div class="ocr-sample">${h(row.sampleNo)}</div>
-            <div class="ocr-meta">${h(row.section)} · ${h(row.pctag)}</div>
-          </div>
-          <span class="ocr-tag">OVER ${minutesLabel(overBy)}</span>
-        </div>
-      `;
-    }).join("");
-  }
+  const urgentRows = sortByRisk([...asapRows, ...statRows]);
+  renderAlertColumnBoard(urgentRows, elements.urgentChips, sections, { showPctag: true });
+  renderAlertColumnBoard(critRows, elements.criticalChips, sections);
+  renderAlertColumnBoard(warnRows, elements.warnTimeChips, sections);
+  renderOverTatBoard(overRows, elements.overWarrantyChips);
 }
 
-/* Sample chip: text colored by LIS status, outlined by TAT risk */
-function sampleChip(row) {
-  const statusClass = getStatusClass(row);
-  const tatStatus   = getTatStatus(row);
-  const riskClass   = tatStatus === "over" ? "over" : tatStatus === "warning" ? "warning" : "";
-  const marker      = tatStatus === "over" ? " !" : tatStatus === "warning" ? " ~" : "";
-  const title       = `${row.sampleNo} | ${row.requestNo} | ${row.hn} | ${row.section} | ${row.test} | ${row.lisStatus} | ${row.pctag} | ${minutesLabel(row.elapsedTat)} / ${minutesLabel(row.targetTat)}`;
+function getAlertSections(allRows, preferredRows = [], max = 3) {
+  const preferredOrder = ["ICH", "HEM", "MIC", "CHEM", "IMM", "MOL", "SER"];
+  const sourceRows = preferredRows.length ? preferredRows : allRows;
+  const rankedSections = Object.entries(groupRows(sourceRows, (row) => row.section))
+    .map(([section, group]) => ({
+      section,
+      count: group.length,
+      preferredIndex: preferredOrder.indexOf(String(section).toUpperCase()),
+    }))
+    .sort((a, b) => (
+      (a.preferredIndex === -1 ? 999 : a.preferredIndex) - (b.preferredIndex === -1 ? 999 : b.preferredIndex)
+      || b.count - a.count
+      || a.section.localeCompare(b.section)
+    ))
+    .map((item) => item.section)
+    .slice(0, max);
 
-  return `<span class="sample-chip ${h(statusClass)} ${h(riskClass)}" title="${h(title)}">${h(row.sampleNo)}${marker}</span>`;
+  return rankedSections.length
+    ? rankedSections
+    : [...new Set(allRows.map((row) => row.section))].slice(0, max);
+}
+
+function renderAlertSectionLabels(el, sections) {
+  el.innerHTML = sections.map((section) => `<span class="alert-section-label">${h(section)}</span>`).join("");
+}
+
+function renderAlertColumnBoard(targetRows, el, sections, options = {}) {
+  const { showPctag = false, maxPerSection = 6 } = options;
+  const sorted = sortByRisk(targetRows);
+  if (!sorted.length) {
+    el.innerHTML = `<div class="empty-state" style="min-height:60px;font-size:0.68rem">None</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="alert-sample-grid">
+      ${sections.map((section) => {
+        const sectionRows = sorted.filter((row) => row.section === section).slice(0, maxPerSection);
+        return `
+          <div class="alert-section-col">
+            <div class="alert-section-list">
+              ${sectionRows.length
+                ? sectionRows.map((row) => alertEntry(row, { showPctag })).join("")
+                : `<div class="alert-entry alert-entry-empty"><span class="alert-entry-text">-</span></div>`}
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderOverTatBoard(rows, el) {
+  const sorted = sortByRisk(rows);
+  if (!sorted.length) {
+    el.innerHTML = `<div class="empty-state" style="min-height:60px;font-size:0.68rem">None</div>`;
+    return;
+  }
+
+  const primary = sorted[0];
+  const secondary = sorted.slice(1, 5);
+  const overBy = Math.max(0, primary.elapsedTat - primary.targetTat);
+
+  el.innerHTML = `
+    <div class="over-focus ${h(getStatusClass(primary))}">
+      <div class="over-focus-label">Highest delay</div>
+      <div class="over-focus-sample">${h(primary.sampleNo)}</div>
+      <div class="over-focus-meta">${h(primary.section)} · ${h(primary.pctag)} · ${minutesLabel(overBy)} over</div>
+    </div>
+    ${secondary.length ? `
+      <div class="over-mini-list">
+        ${secondary.map((row) => `
+          <div class="over-mini-item ${h(getStatusClass(row))}">
+            <span>${h(row.sampleNo)}</span>
+            <strong>${h(row.section)}</strong>
+          </div>
+        `).join("")}
+      </div>
+    ` : ""}
+  `;
+}
+
+function alertEntry(row, options = {}) {
+  const { showPctag = false } = options;
+  const statusClass = getStatusClass(row);
+  const tatStatus = getTatStatus(row);
+  const riskClass = tatStatus === "over" ? "over" : tatStatus === "warning" ? "warning" : "";
+  const marker = tatStatus === "over" ? "!" : tatStatus === "warning" ? "~" : "";
+  const title = `${row.sampleNo} | ${row.requestNo} | ${row.hn} | ${row.section} | ${row.test} | ${row.lisStatus} | ${row.pctag} | ${minutesLabel(row.elapsedTat)} / ${minutesLabel(row.targetTat)}`;
+
+  return `
+    <div class="alert-entry ${h(statusClass)} ${h(riskClass)}" title="${h(title)}">
+      <span class="alert-entry-dot"></span>
+      <span class="alert-entry-text">${h(row.sampleNo)}</span>
+      ${showPctag ? `<span class="alert-entry-tag">${h(row.pctag)}</span>` : ""}
+      ${marker ? `<span class="alert-entry-mark">${marker}</span>` : ""}
+    </div>
+  `;
 }
 
 /* ══════════════════════════════════════════════════════════
    RENDER — DASHBOARD 2  (unchanged logic)
 ══════════════════════════════════════════════════════════ */
 function renderActionBoards(rows) {
-  const actionRows  = sortByRisk(rows).filter((row) => !isCompleted(row));
-  const overRows    = actionRows.filter(isOverTat);
-  const warningRows = actionRows.filter((row) => !isOverTat(row) && (isWarningTat(row) || row.pctag === "ASAP"));
+  const requestEntries   = getRequestBoardEntries(rows);
+  const pendingEntries   = requestEntries.filter((entry) => !entry.allCompleted);
+  const completedEntries = requestEntries.filter((entry) => entry.allCompleted);
+  const overEntries      = pendingEntries.filter((entry) => entry.tatState === "over");
+  const warningEntries   = pendingEntries.filter((entry) => entry.tatState === "warning");
 
-  elements.actionBoardTotal.textContent = `${formatNumber(warningRows.length + overRows.length)} action rows`;
-  elements.warningTotal.textContent     = `${formatNumber(warningRows.length)} rows`;
-  elements.overTotal.textContent        = `${formatNumber(overRows.length)} rows`;
+  elements.actionBoardTotal.textContent    = `${formatNumber(warningEntries.length + overEntries.length)} action groups`;
+  elements.pendingTotal.textContent        = formatNumber(pendingEntries.length);
+  elements.overSummaryTotal.textContent    = formatNumber(overEntries.length);
+  elements.warningSummaryTotal.textContent = formatNumber(warningEntries.length);
+  elements.completedTotal.textContent      = formatNumber(completedEntries.length);
+  elements.warningTotal.textContent        = `${formatNumber(warningEntries.length)} groups`;
+  elements.overTotal.textContent           = `${formatNumber(overEntries.length)} groups`;
 
-  elements.warningList.innerHTML = warningRows.length
-    ? warningRows.map((row) => actionRowTemplate(row, "warning")).join("")
-    : `<div class="empty-state">No Warning rows in the current view.</div>`;
+  elements.warningList.innerHTML = warningEntries.length
+    ? warningEntries.map((entry) => actionRowTemplate(entry, "warning")).join("")
+    : `<div class="empty-state">No Warning Request / HN groups in the current view.</div>`;
 
-  elements.overList.innerHTML = overRows.length
-    ? overRows.map((row) => actionRowTemplate(row, "over")).join("")
-    : `<div class="empty-state">No Over TAT rows in the current view.</div>`;
+  elements.overList.innerHTML = overEntries.length
+    ? overEntries.map((entry) => actionRowTemplate(entry, "over")).join("")
+    : `<div class="empty-state">No Over TAT Request / HN groups in the current view.</div>`;
 }
 
-function actionRowTemplate(row, type) {
-  const overBy = Math.max(0, row.elapsedTat - row.targetTat);
-  const left   = Math.max(0, row.targetTat - row.elapsedTat);
-  const timing = type === "over" ? `${minutesLabel(overBy)} over` : `${minutesLabel(left)} left`;
+function actionRowTemplate(entry, type) {
+  const timing = minutesLabel(entry.elapsedTat);
+  const sectionChips = entry.sections.map((section) => `
+    <span class="section-chip ${h(section.status.className)}" title="${h(`${section.section} · ${section.status.label} · ${formatNumber(section.count)} sample(s)`)}">
+      <span class="section-chip-label">${h(section.section)}</span>
+      <span class="section-chip-count">${formatNumber(section.count)}</span>
+    </span>
+  `).join("");
 
   return `
-    <article class="action-row ${type === "over" ? "over" : ""}">
+    <article class="action-row ${type === "over" ? "over" : entry.allCompleted ? "completed" : ""}">
       <div class="action-main">
-        <strong>${h(row.requestNo)} / ${h(row.hn)}</strong>
-        <small>Sample ${h(row.sampleNo)}</small>
+        <strong title="${h(entry.requestNo)}">${h(entry.requestNo)}</strong>
+        <small>HN ${h(entry.hn)}</small>
       </div>
-      <div class="action-detail">
-        <strong>${h(row.section)} · ${h(row.test)}</strong>
-        <small>${h(row.pctag)} target ${minutesLabel(row.targetTat)} · Stage ${h(row.processStage)}</small>
+      <div class="action-detail" title="${h(entry.patient)}">
+        <strong>${h(entry.patient)}</strong>
+      </div>
+      <div class="action-count">
+        <strong>${formatNumber(entry.sampleCount)}</strong>
+      </div>
+      <div class="action-sections">
+        ${sectionChips}
+      </div>
+      <div class="action-status">
+        <span class="status-pill ${h(entry.currentStatus.className)}" title="${h(entry.currentStatus.label)}">
+          <span class="status-pill-label">${h(entry.currentStatus.label)}</span>
+        </span>
       </div>
       <div class="action-tat">
         <strong>${h(timing)}</strong>
-        <span class="status-pill ${h(getStatusClass(row))}">${h(row.lisStatus)}</span>
       </div>
     </article>
   `;
 }
 
 function renderSectionStatusStrip(rows) {
-  const sections = getSectionSummary(rows);
+  if (!elements.sectionStatusStrip || !elements.sectionStatusTotal) return;
+  const sections = Object.entries(groupRows(rows, (row) => row.section))
+    .map(([section, group]) => ({
+      section,
+      status: getDominantLisStatus(group),
+      ...getStats(group),
+    }))
+    .sort((a, b) => (
+      b.over - a.over || b.warning - a.warning || b.total - a.total || a.section.localeCompare(b.section)
+    ));
   elements.sectionStatusTotal.textContent = `${formatNumber(sections.length)} sections`;
 
   if (!sections.length) {
@@ -748,7 +1072,7 @@ function renderSectionStatusStrip(rows) {
   }
 
   elements.sectionStatusStrip.innerHTML = sections.map((section) => `
-    <article class="section-status-card ${h(section.dominant.borderClass)}">
+    <article class="section-status-card ${h(section.status.borderClass)}">
       <strong>${h(section.section)}</strong>
       <small>
         ${formatNumber(section.total)} total ·
@@ -756,7 +1080,7 @@ function renderSectionStatusStrip(rows) {
         ${formatNumber(section.over)} over ·
         ${formatNumber(section.completed)} done
       </small>
-      <span class="status-pill ${h(section.dominant.className)}">${h(section.dominant.label)}</span>
+      <span class="status-pill ${h(section.status.className)}">${h(section.status.label)}</span>
     </article>
   `).join("");
 }
@@ -781,14 +1105,20 @@ async function loadDashboard(options = {}) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const rows = extractRowsFromDashboardResponse(data).map(normalizeRow);
-    if (!rows.length) throw new Error("Dashboard API returned no rows");
     state.allRows      = rows;
+    state.date         = data?.filters?.date?.selected || data?.date?.selected || state.date;
+    state.lastUpdatedAt = data?.lastUpdatedAt || data?.meta?.generatedAt || new Date().toISOString();
     state.latestSource = "api";
+    state.latestTrendKey = getDashboardQueryKey();
+    state.latestTrend  = extractTrendFromDashboardResponse(data);
     render();
   } catch (error) {
-    console.warn("Using local sample fallback:", error);
-    state.allRows      = SAMPLE_ROWS;
-    state.latestSource = "sample";
+    console.error("Live dashboard load failed:", error);
+    state.allRows      = [];
+    state.lastUpdatedAt = new Date().toISOString();
+    state.latestSource = "offline";
+    state.latestTrendKey = "";
+    state.latestTrend  = [];
     render();
   } finally {
     setDashboardLoading(false);
@@ -806,6 +1136,20 @@ function extractRowsFromDashboardResponse(data) {
   return [];
 }
 
+function extractTrendFromDashboardResponse(data) {
+  return normalizeTrendRows(Array.isArray(data?.trend) ? data.trend : []);
+}
+
+function getDashboardQueryKey() {
+  return JSON.stringify({
+    account: state.account || "all",
+    date: state.date || "",
+    priority: state.priority || "all",
+    search: state.search.trim(),
+    section: state.section || "all",
+  });
+}
+
 function setDashboardLoading(isLoading) {
   state.dashboardLoading = isLoading;
   elements.refreshBtn.disabled = isLoading;
@@ -818,7 +1162,7 @@ function setDashboardLoading(isLoading) {
 ══════════════════════════════════════════════════════════ */
 function updateLastUpdatedLabel(value) {
   const date   = value instanceof Date ? value : new Date(value);
-  const source = state.latestSource === "api" ? "API" : "Sample";
+  const source = state.latestSource === "api" ? "LIVE" : "NO LIVE DATA";
   elements.lastUpdated.textContent = `Updated: ${formatClockValue(date)} | ${source}`;
 }
 

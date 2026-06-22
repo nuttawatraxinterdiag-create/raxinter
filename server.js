@@ -20,7 +20,7 @@ const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || 3000);
 const ROOT_DIR = __dirname;
 
-const STATIC_FILES = {
+  const STATIC_FILES = {
   "/": { file: "index.html", contentType: "text/html; charset=utf-8" },
   "/index.html": { file: "index.html", contentType: "text/html; charset=utf-8" },
   "/app.js": { file: "app.js", contentType: "application/javascript; charset=utf-8" },
@@ -35,24 +35,9 @@ function writeJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
-async function readRequestJson(request) {
-  const chunks = [];
-
-  for await (const chunk of request) {
-    chunks.push(chunk);
-  }
-
-  if (!chunks.length) {
-    return {};
-  }
-
-  const rawBody = Buffer.concat(chunks).toString("utf8");
-  return JSON.parse(rawBody);
-}
-
 async function handleDashboardRequest(requestUrl, response) {
   const payload = await getDashboardPayload({
-    account: requestUrl.searchParams.get("account") || "PWL",
+    account: requestUrl.searchParams.get("account") || "all",
     date: requestUrl.searchParams.get("date") || "",
     mock: requestUrl.searchParams.get("mock") || "",
     priority: requestUrl.searchParams.get("priority") || "all",
@@ -60,34 +45,6 @@ async function handleDashboardRequest(requestUrl, response) {
     section: requestUrl.searchParams.get("section") || "all",
   });
   writeJson(response, 200, payload);
-}
-
-async function handleOllamaRequest(request, response) {
-  const requestBody = await readRequestJson(request);
-  const ollamaUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434/api/generate";
-
-  const ollamaResponse = await fetch(ollamaUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  const text = await ollamaResponse.text();
-
-  if (!ollamaResponse.ok) {
-    const error = new Error(`Ollama returned HTTP ${ollamaResponse.status}`);
-    error.statusCode = 502;
-    error.details = text;
-    throw error;
-  }
-
-  response.writeHead(200, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  response.end(text);
 }
 
 async function handleStaticRequest(requestPath, response) {
@@ -130,11 +87,6 @@ const server = http.createServer(async (request, response) => {
 
     if (request.method === "GET" && requestUrl.pathname === "/api/dashboard") {
       await handleDashboardRequest(requestUrl, response);
-      return;
-    }
-
-    if (request.method === "POST" && requestUrl.pathname === "/api/ollama/generate") {
-      await handleOllamaRequest(request, response);
       return;
     }
 

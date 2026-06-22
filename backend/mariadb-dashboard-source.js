@@ -82,9 +82,21 @@ function formatDateInputValue(value = new Date()) {
 
 function resolveSelectedDate(value) {
   const candidate = cleanText(value);
-  return /^\d{4}-\d{2}-\d{2}$/.test(candidate)
-    ? candidate
-    : formatDateInputValue();
+  return /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : "";
+}
+
+async function resolveLatestRequestDate() {
+  const pool = await getMariadbPool();
+  const rows = await pool.query(`
+    SELECT DATE_FORMAT(MAX(lrq_requestdatetime), '%Y-%m-%d') AS latestDate
+    FROM labrequest
+  `);
+  return cleanText(rows?.[0]?.latestDate, formatDateInputValue());
+}
+
+async function resolveDashboardDate(value) {
+  const selectedDate = resolveSelectedDate(value);
+  return selectedDate || resolveLatestRequestDate();
 }
 
 function toNumber(value, fallback = 0) {
@@ -97,14 +109,14 @@ function normalizePriority(value) {
 
   if (
     text.includes("critical") ||
-    text.includes("stat") ||
     text.includes("very urgent") ||
-    text.includes("veryurgent")
+    text.includes("veryurgent") ||
+    text.includes("asap")
   ) {
     return "Critical";
   }
 
-  if (text.includes("urgent")) {
+  if (text.includes("urgent") || text.includes("stat")) {
     return "Urgent";
   }
 
@@ -745,8 +757,10 @@ function buildFallbackTrend(items) {
     if (!rows.length) {
       return {
         avg: 0,
+        approved: 0,
         hour: bucket,
         onTime: 0,
+        received: 0,
       };
     }
 
@@ -759,8 +773,10 @@ function buildFallbackTrend(items) {
 
     return {
       avg,
+      approved: rows.filter(isCompleted).length,
       hour: bucket,
       onTime: Math.round((onTimeCount / rows.length) * 1000) / 10,
+      received: rows.length,
     };
   });
 }
@@ -786,6 +802,7 @@ function mapTrendHour(value) {
 function mapTrendRows(rows) {
   return rows.map((row) => ({
     avg: Math.max(0, Math.round(toNumber(row.avg || row.average || row.avgTat || row.avg_tat, 0))),
+    approved: Math.max(0, Math.round(toNumber(row.approved || row.completed || row.done, 0))),
     hour: mapTrendHour(row.hour || row.bucket || row.timeSlot || row.time_slot),
     onTime: clamp(
       Math.round(
@@ -797,6 +814,7 @@ function mapTrendRows(rows) {
       0,
       100,
     ),
+    received: Math.max(0, Math.round(toNumber(row.received || row.requests || row.total, 0))),
   }));
 }
 
@@ -1024,7 +1042,7 @@ function buildDashboardPayload({
   selectedDate,
   trendRows,
 }) {
-  const selectedAccount = cleanText(query.account, "PWL");
+  const selectedAccount = cleanText(query.account, "all");
   const visibleCases = filterCases({
     account: selectedAccount,
     caseSource: allCases,
@@ -1220,7 +1238,7 @@ function buildDashboardPayload({
 }
 
 async function getMariadbDashboardPayload(query = {}) {
-  const selectedDate = resolveSelectedDate(query.date);
+  const selectedDate = await resolveDashboardDate(query.date);
   const casesSqlDefinition = await getCasesSqlDefinition();
   const caseRows = await runDashboardQuery(casesSqlDefinition, selectedDate);
   const allCases = caseRows.map((row, index) => mapCaseRow(row, index));

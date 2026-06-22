@@ -12,10 +12,6 @@
 <body data-theme="dark" data-dashboard-page="1">
   <main class="dashboard-shell">
     <section class="dashboard-screen" aria-label="PWL LIS Monitor">
-
-      <!-- ══════════════════════════════════════════════
-           HEADER
-      ══════════════════════════════════════════════ -->
       <header class="top-header">
         <div class="brand">
           <div class="brand-mark">PWL</div>
@@ -25,7 +21,15 @@
           </div>
         </div>
 
-        <div class="header-tools">
+        <div class="header-status">
+          <button class="refresh-button" id="refreshBtn" type="button">↺ Refresh</button>
+          <span class="live-badge" id="liveBadge">Loading</span>
+          <strong class="clock" id="liveClock">00:00:00</strong>
+        </div>
+      </header>
+
+      <nav class="section-bar" aria-label="Filters and section selector">
+        <div class="section-toolbar">
           <label class="mini-control">
             <span>Account</span>
             <select id="accountFilter"></select>
@@ -33,7 +37,7 @@
 
           <label class="mini-control mini-control--wide">
             <span>Search</span>
-            <input id="searchInput" type="search" placeholder="Sample No., HN, section, test…" />
+            <input id="searchInput" type="search" placeholder="Sample No., HN, section, test..." />
           </label>
 
           <label class="mini-control">
@@ -50,81 +54,58 @@
             <span>Date</span>
             <input id="dateFilter" type="date" />
           </label>
-
-          <button class="refresh-button" id="refreshBtn" type="button">↺ Refresh</button>
-
-          <span class="live-badge" id="liveBadge">Loading</span>
-          <strong class="clock" id="liveClock">00:00:00</strong>
         </div>
-      </header>
 
-      <!-- ══════════════════════════════════════════════
-           SECTION TAB BAR  (Photo 2 style)
-      ══════════════════════════════════════════════ -->
-      <nav class="section-bar" aria-label="Section selector">
-        <div class="section-tabs" id="sectionTabs"></div>
+        <div class="section-tabs-row">
+          <span class="toolbar-kicker">Sections</span>
+          <div class="section-tabs" id="sectionTabs"></div>
+        </div>
       </nav>
 
-      <!-- ══════════════════════════════════════════════
-           DASHBOARD SWITCH
-      ══════════════════════════════════════════════ -->
       <div class="dashboard-switch">
+        <span class="toolbar-kicker">View</span>
         <button class="switch-button active" type="button" data-billboard-target="1">
-          Dashboard 1 · Sample Status
+          Dashboard 1
         </button>
         <button class="switch-button" type="button" data-billboard-target="2">
-          Dashboard 2 · Request / HN TAT
+          Dashboard 2
         </button>
         <span class="last-updated" id="lastUpdated">Updated: --</span>
       </div>
 
-      <!-- ══════════════════════════════════════════════
-           DASHBOARD PAGES
-      ══════════════════════════════════════════════ -->
       <section class="dashboard-pages">
-
-        <!-- ─────────────────────────────────────────
-             DASHBOARD 1
-        ───────────────────────────────────────── -->
         <section class="dashboard-page dashboard-page-one" data-dashboard-page="1" aria-label="Dashboard 1">
-
-          <!-- ZONE A: Top summary (Photo 1 top zone → 3 zone cards + TAT stats) -->
           <div class="zone-top">
+            <article class="zone-card zone-critical">
+              <div class="zone-icon">⚡</div>
+              <div class="zone-body">
+                <div class="zone-label">Very Urgent</div>
+                <div class="zone-number" id="priorityCriticalCount">0</div>
+                <div class="zone-sub" id="priorityCriticalSub">Within target 0%</div>
+                <div class="zone-bars" id="priorityCriticalBars"></div>
+              </div>
+            </article>
 
-            <!-- Zone OK -->
-            <article class="zone-card zone-ok" id="zoneOk">
+            <article class="zone-card zone-urgent">
+              <div class="zone-icon">⌛</div>
+              <div class="zone-body">
+                <div class="zone-label">Urgent</div>
+                <div class="zone-number" id="priorityUrgentCount">0</div>
+                <div class="zone-sub" id="priorityUrgentSub">Within target 0%</div>
+                <div class="zone-bars" id="priorityUrgentBars"></div>
+              </div>
+            </article>
+
+            <article class="zone-card zone-normal">
               <div class="zone-icon">✓</div>
               <div class="zone-body">
-                <div class="zone-label">ZONE OK</div>
-                <div class="zone-number" id="zoneOkCount">0</div>
-                <div class="zone-sub">Sample อยู่ในเวลามาตรฐาน</div>
-                <div class="zone-bars" id="zoneOkBars"></div>
+                <div class="zone-label">Normal</div>
+                <div class="zone-number" id="priorityRoutineCount">0</div>
+                <div class="zone-sub" id="priorityRoutineSub">Within target 0%</div>
+                <div class="zone-bars" id="priorityRoutineBars"></div>
               </div>
             </article>
 
-            <!-- Zone Warning -->
-            <article class="zone-card zone-warning" id="zoneWarning">
-              <div class="zone-icon">⚠</div>
-              <div class="zone-body">
-                <div class="zone-label">ZONE WARNING (≥82–100%)</div>
-                <div class="zone-number" id="zoneWarningCount">0</div>
-                <div class="zone-sub">Sample ใกล้เกินเวลามาตรฐาน</div>
-                <div class="zone-bars" id="zoneWarningBars"></div>
-              </div>
-            </article>
-
-            <!-- Zone Over -->
-            <article class="zone-card zone-over" id="zoneOver">
-              <div class="zone-icon">✕</div>
-              <div class="zone-body">
-                <div class="zone-label">ZONE OVER</div>
-                <div class="zone-number" id="zoneOverCount">0</div>
-                <div class="zone-sub">Sample เกินเวลามาตรฐาน</div>
-                <div class="zone-bars" id="zoneOverBars"></div>
-              </div>
-            </article>
-
-            <!-- TAT Summary -->
             <article class="zone-card zone-tat">
               <div class="zone-label">Turnaround Time</div>
               <div class="tat-stats" id="tatStats">
@@ -134,13 +115,9 @@
                 <div class="tat-row"><span>TAT Median</span><strong>--:--</strong></div>
               </div>
             </article>
+          </div>
 
-          </div><!-- /zone-top -->
-
-          <!-- ZONE B: Middle — Status summary + Workload trend chart -->
           <div class="zone-middle">
-
-            <!-- LIS Status Summary -->
             <article class="panel-card status-summary-panel">
               <div class="panel-head">
                 <h3>Status</h3>
@@ -149,7 +126,6 @@
               <div class="status-summary-list" id="statusSummaryList"></div>
             </article>
 
-            <!-- Workload Trend Chart -->
             <article class="panel-card chart-panel">
               <div class="panel-head">
                 <h3>Workload &amp; TAT Trend</h3>
@@ -159,14 +135,11 @@
                 </div>
               </div>
               <svg class="workload-chart" id="workloadChart" role="img" aria-label="Workload and TAT trend chart"></svg>
+              <div class="chart-tooltip" id="chartTooltip" hidden></div>
             </article>
+          </div>
 
-          </div><!-- /zone-middle -->
-
-          <!-- ZONE C: Bottom alert panels (Photo 1 bottom zone) -->
           <div class="zone-bottom">
-
-            <!-- Urgent Status -->
             <article class="alert-panel alert-urgent">
               <div class="alert-head">
                 <span class="alert-icon">🔥</span>
@@ -178,7 +151,6 @@
               <div class="alert-chips" id="urgentChips"></div>
             </article>
 
-            <!-- Critical Warning -->
             <article class="alert-panel alert-critical">
               <div class="alert-head">
                 <span class="alert-icon">🔴</span>
@@ -189,7 +161,6 @@
               <div class="alert-chips" id="criticalChips"></div>
             </article>
 
-            <!-- Warning Time -->
             <article class="alert-panel alert-warn-time">
               <div class="alert-head">
                 <span class="alert-icon">⚠️</span>
@@ -200,7 +171,6 @@
               <div class="alert-chips" id="warnTimeChips"></div>
             </article>
 
-            <!-- Over Warranty -->
             <article class="alert-panel alert-over-warranty">
               <div class="alert-head">
                 <span class="alert-icon">🔺</span>
@@ -209,21 +179,42 @@
               </div>
               <div class="alert-chips alert-chips--over" id="overWarrantyChips"></div>
             </article>
+          </div>
+        </section>
 
-          </div><!-- /zone-bottom -->
-
-        </section><!-- /dashboard-page-one -->
-
-        <!-- ─────────────────────────────────────────
-             DASHBOARD 2  (unchanged structure)
-        ───────────────────────────────────────── -->
         <section class="dashboard-page dashboard-page-two" data-dashboard-page="2" aria-label="Dashboard 2 Request / HN">
           <section class="page-heading">
             <div>
               <h2>Request No. / HN TAT Action Board</h2>
-              <p>Warning and Over TAT rows that need attention.</p>
+              <p>Grouped by Request No. or HN with LIS status, section detail, and TAT tracking.</p>
             </div>
             <span class="page-total" id="actionBoardTotal">0 action rows</span>
+          </section>
+
+          <section class="dashboard-two-summary" aria-label="Dashboard 2 summary">
+            <article class="summary-tile summary-tile-pending">
+              <div class="summary-tile-label">Total Pending</div>
+              <strong class="summary-tile-value" id="pendingTotal">0</strong>
+              <small class="summary-tile-meta">Request / HN still in progress</small>
+            </article>
+
+            <article class="summary-tile summary-tile-over">
+              <div class="summary-tile-label">Over TAT</div>
+              <strong class="summary-tile-value" id="overSummaryTotal">0</strong>
+              <small class="summary-tile-meta">Past target time</small>
+            </article>
+
+            <article class="summary-tile summary-tile-warning">
+              <div class="summary-tile-label">Warning TAT</div>
+              <strong class="summary-tile-value" id="warningSummaryTotal">0</strong>
+              <small class="summary-tile-meta">Near target time</small>
+            </article>
+
+            <article class="summary-tile summary-tile-completed">
+              <div class="summary-tile-label">Completed</div>
+              <strong class="summary-tile-value" id="completedTotal">0</strong>
+              <small class="summary-tile-meta">Finished request / HN groups</small>
+            </article>
           </section>
 
           <section class="dashboard-two-layout">
@@ -231,9 +222,16 @@
               <div class="panel-title-row">
                 <div>
                   <h3>Warning</h3>
-                  <p>Near target or ASAP rows still inside target.</p>
                 </div>
                 <span class="panel-count warning" id="warningTotal">0 rows</span>
+              </div>
+              <div class="action-grid-head" aria-hidden="true">
+                <span>Request / HN</span>
+                <span>Patient</span>
+                <span>Sample Count</span>
+                <span>Sections</span>
+                <span>Current Status</span>
+                <span>Elapsed Time</span>
               </div>
               <div class="action-list" id="warningList"></div>
             </article>
@@ -242,28 +240,23 @@
               <div class="panel-title-row">
                 <div>
                   <h3>Over TAT</h3>
-                  <p>Rows already past target time.</p>
                 </div>
                 <span class="panel-count danger" id="overTotal">0 rows</span>
               </div>
+              <div class="action-grid-head" aria-hidden="true">
+                <span>Request / HN</span>
+                <span>Patient</span>
+                <span>Sample Count</span>
+                <span>Sections</span>
+                <span>Current Status</span>
+                <span>Elapsed Time</span>
+              </div>
               <div class="action-list" id="overList"></div>
             </article>
-
-            <article class="main-panel section-status-panel">
-              <div class="panel-title-row">
-                <div>
-                  <h3>Section Status</h3>
-                  <p>Section color follows highest risk or dominant LIS status.</p>
-                </div>
-                <span class="panel-count" id="sectionStatusTotal">0 sections</span>
-              </div>
-              <div class="section-status-strip" id="sectionStatusStrip"></div>
-            </article>
           </section>
-        </section><!-- /dashboard-page-two -->
-
-      </section><!-- /dashboard-pages -->
-    </section><!-- /dashboard-screen -->
+        </section>
+      </section>
+    </section>
   </main>
 </body>
 
