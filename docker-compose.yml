@@ -1,0 +1,16 @@
+services:
+  rax-dashboard:
+    build: .
+    command: npm run docker:dev
+    container_name: rax-dashboard
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3001
+    volumes:
+      - .:/app
+      - /app/node_modules
+    restart: unless-stopped

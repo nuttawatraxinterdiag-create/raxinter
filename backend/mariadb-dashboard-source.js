@@ -302,14 +302,15 @@ function normalizeStatus(value, stage) {
   if (
     normalized.includes("complete") ||
     normalized.includes("approved") ||
+    normalized.includes("approve") ||
     normalized.includes("release") ||
     normalized.includes("final")
   ) {
-    return "Completed";
+    return "Approve";
   }
 
   if (!text && stage === "Approved") {
-    return "Completed";
+    return "Approve";
   }
 
   return text || "Queued";
@@ -369,7 +370,7 @@ function getMedian(values) {
 }
 
 function isCompleted(item) {
-  return item.status === "Completed";
+  return item.status === "Approve" || item.status === "Completed";
 }
 
 function isBreach(item) {
@@ -517,7 +518,8 @@ function buildAlertRow(item) {
     patient: item.patient,
     priority: item.priority,
     processStage: item.processStage,
-    requestNo: item.id,
+    requestNo: item.requestNo || item.id,
+    sampleNo: item.sampleNo,
     riskLevel: item.priority === "Critical"
       ? "high"
       : isBreach(item)
@@ -602,6 +604,8 @@ function filterCases({
       !normalizedSearch ||
       [
         item.id,
+        item.requestNo,
+        item.sampleNo,
         item.account,
         item.patient,
         item.department,
@@ -698,6 +702,14 @@ function mapCaseRow(row, index) {
     id: cleanText(
       row.id || row.requestNo || row.request_no || row.accessionNo || row.accession_no,
       `ROW-${index + 1}`,
+    ),
+    requestNo: cleanText(
+      row.requestNo || row.request_no || row.accessionNo || row.accession_no || row.id,
+      `REQ-${index + 1}`,
+    ),
+    sampleNo: cleanText(
+      row.sampleNo || row.sample_no || row.specimenNo || row.specimen_no || row.ln,
+      "",
     ),
     machine: cleanText(
       row.machine || row.analyzer || row.analyser || row.instrument,
@@ -1224,7 +1236,7 @@ function buildDashboardPayload({
       overTarget: stats.breaches.length,
       pendingCount: stats.active.length,
       peakHour: forecast.peak,
-      requests: new Set(visibleCases.map((item) => item.id)).size,
+      requests: new Set(visibleCases.map((item) => item.requestNo || item.id)).size,
       samples: visibleCases.length,
       tests: visibleCases.length,
       urgent: visibleCases.filter((item) => item.priority === "Urgent").length,

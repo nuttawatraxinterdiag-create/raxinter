@@ -5,9 +5,13 @@
     "dotenv": "^17.4.2",
     "mariadb": "^3.5.3"
   },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "docker:dev": "nodemon -L --watch server.js --watch backend --watch app.js --watch index.html --watch styles.css --ext js,html,css,json server.js",
     "check": "node --check server.js && node --check app.js && node --check backend/dashboard-service.js && node --check backend/mock-dashboard-source.js && node --check backend/mariadb-dashboard-source.js && node --check backend/load-env.js"
   }
 }

@@ -41,16 +41,6 @@
           </label>
 
           <label class="mini-control">
-            <span>PCTAG</span>
-            <select id="priorityFilter">
-              <option value="all">All PCTAG</option>
-              <option value="ASAP">ASAP</option>
-              <option value="STAT">STAT</option>
-              <option value="ROUTINE">Routine</option>
-            </select>
-          </label>
-
-          <label class="mini-control">
             <span>Date</span>
             <input id="dateFilter" type="date" />
           </label>
@@ -76,7 +66,7 @@
       <section class="dashboard-pages">
         <section class="dashboard-page dashboard-page-one" data-dashboard-page="1" aria-label="Dashboard 1">
           <div class="zone-top">
-            <article class="zone-card zone-critical">
+            <article class="zone-card zone-critical zone-card-filter" data-priority-filter="ASAP" role="button" tabindex="0" aria-pressed="false" title="Show very urgent details below">
               <div class="zone-icon">⚡</div>
               <div class="zone-body">
                 <div class="zone-label">Very Urgent</div>
@@ -86,7 +76,7 @@
               </div>
             </article>
 
-            <article class="zone-card zone-urgent">
+            <article class="zone-card zone-urgent zone-card-filter" data-priority-filter="STAT" role="button" tabindex="0" aria-pressed="false" title="Show urgent details below">
               <div class="zone-icon">⌛</div>
               <div class="zone-body">
                 <div class="zone-label">Urgent</div>
@@ -96,7 +86,7 @@
               </div>
             </article>
 
-            <article class="zone-card zone-normal">
+            <article class="zone-card zone-normal zone-card-filter" data-priority-filter="ROUTINE" role="button" tabindex="0" aria-pressed="false" title="Show normal details below">
               <div class="zone-icon">✓</div>
               <div class="zone-body">
                 <div class="zone-label">Normal</div>
@@ -211,9 +201,9 @@
             </article>
 
             <article class="summary-tile summary-tile-completed">
-              <div class="summary-tile-label">Completed</div>
+              <div class="summary-tile-label">Approved</div>
               <strong class="summary-tile-value" id="completedTotal">0</strong>
-              <small class="summary-tile-meta">Finished request / HN groups</small>
+              <small class="summary-tile-meta">Approved request / HN groups</small>
             </article>
           </section>
 

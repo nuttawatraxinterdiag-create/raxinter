@@ -4,6 +4,8 @@
 const AUTO_REFRESH_MS            = 30000;
 const VIEW_ROTATION_MS           = 12000;
 const VIEW_IDLE_RESUME_MS        = 5000;
+const AUTO_REFRESH_ENABLED       = false;
+const VIEW_ROTATION_ENABLED      = false;
 const WARNING_RATIO              = 0.82;
 const DASHBOARD_PAGE_STORAGE_KEY = "pwl-lis-active-page";
 const WORKLOAD_CHART_FALLBACK_HEIGHT = 300;
@@ -13,7 +15,7 @@ const LIS_STATUS_ORDER = [
   "Analyzing",
   "Result",
   "Report",
-  "Completed",
+  "Approve",
 ];
 
 const LIS_STATUS_PRIORITY = {
@@ -21,7 +23,7 @@ const LIS_STATUS_PRIORITY = {
   Analyzing: 2,
   Result: 3,
   Report: 4,
-  Completed: 5,
+  Approve: 5,
 };
 
 const PCTAG_DEFINITIONS = [
@@ -29,6 +31,8 @@ const PCTAG_DEFINITIONS = [
   { value: "STAT",    label: "STAT",    target: 30 },
   { value: "ROUTINE", label: "Routine", target: 90 },
 ];
+
+const PRIORITY_CARD_SECTIONS = ["ICH", "HEM", "MIC"];
 
 const STATUS_CLASS = {
   Request:        "status-request",
@@ -42,9 +46,9 @@ const STATUS_CLASS = {
   Report:         "status-report",
   Review:         "status-report",
   "Awaiting report": "status-report",
-  Approve:        "status-completed",
+  Approve:        "status-approve",
   Approved:       "status-approve",
-  Completed:      "status-completed",
+  Completed:      "status-approve",
 };
 
 /* Map status → CSS class for ss-bar-fill */
@@ -54,7 +58,8 @@ const STATUS_FILL_CLASS = {
   Result:         "ss-fill-result-sent",
   "Result sent":  "ss-fill-result-sent",
   Report:         "ss-fill-report",
-  Completed:      "ss-fill-completed",
+  Approve:        "ss-fill-approve",
+  Completed:      "ss-fill-approve",
 };
 
 /* ══════════════════════════════════════════════════════════
@@ -82,6 +87,7 @@ const state = {
   date:            "",
   dashboardLoading: false,
   lastUpdatedAt:   null,
+  latestError:     "",
   latestSource:    "idle",
   latestTrendKey:  "",
   latestTrend:     [],
@@ -109,6 +115,7 @@ const elements = {
   overTotal:          document.querySelector("#overTotal"),
   pendingTotal:       document.querySelector("#pendingTotal"),
   priorityFilter:     document.querySelector("#priorityFilter"),
+  priorityCards:      [...document.querySelectorAll("[data-priority-filter]")],
   refreshBtn:         document.querySelector("#refreshBtn"),
   searchInput:        document.querySelector("#searchInput"),
   sectionTabs:        document.querySelector("#sectionTabs"),
@@ -216,8 +223,7 @@ function normalizeProcessStage(value) {
 
 function normalizeLisStatus(value) {
   const text = String(value || "").trim().toLowerCase();
-  if (text.includes("complete") || text.includes("release")) return "Completed";
-  if (text.includes("approve")) return "Completed";
+  if (text.includes("complete") || text.includes("release") || text.includes("approve")) return "Approve";
   if (text.includes("report") || text.includes("verify") || text.includes("review") || text.includes("await")) return "Report";
   if (text.includes("result")) return "Result";
   if (text.includes("analy") || text.includes("process") || text.includes("incubat") || text.includes("scan")) return "Analyzing";
@@ -229,7 +235,7 @@ function getPctagDefinition(value) {
 }
 
 function isCompleted(row) {
-  return row.lisStatus === "Completed" || row.processStage === "Approve";
+  return row.lisStatus === "Approve" || row.lisStatus === "Completed" || row.processStage === "Approve";
 }
 
 function isOverTat(row) {
@@ -280,32 +286,37 @@ function getDominantSectionStatus(rows) {
   return getDominantLisStatus(rows);
 }
 
-function getVisibleRows() {
+function matchesSearch(row) {
   const searchText = state.search.trim().toLowerCase();
-  return state.allRows.filter((row) => {
-    const accountMatch  = state.account === "all" || row.account === state.account;
-    const sectionMatch  = state.section === "all" || row.section === state.section;
-    const priorityMatch = state.priority === "all" || row.pctag === state.priority;
-    const searchMatch   = !searchText || [
-      row.sampleNo, row.requestNo, row.hn, row.patient,
-      row.section, row.test, row.pctag, row.lisStatus,
-      row.processStage, row.machine, row.account,
-    ].join(" ").toLowerCase().includes(searchText);
-    return accountMatch && sectionMatch && priorityMatch && searchMatch;
-  });
+  return !searchText || [
+    row.sampleNo, row.requestNo, row.hn, row.patient,
+    row.section, row.test, row.pctag, row.lisStatus,
+    row.processStage, row.machine, row.account,
+  ].join(" ").toLowerCase().includes(searchText);
+}
+
+function matchesBaseFilters(row) {
+  const accountMatch = state.account === "all" || row.account === state.account;
+  const sectionMatch = state.section === "all" || row.section === state.section;
+  return accountMatch && sectionMatch && matchesSearch(row);
+}
+
+function matchesPriorityFocus(row) {
+  return state.priority === "all" || row.pctag === state.priority;
+}
+
+function getSummaryRows() {
+  return state.allRows.filter(matchesBaseFilters);
+}
+
+function getDetailRows(summaryRows = getSummaryRows()) {
+  return summaryRows.filter(matchesPriorityFocus);
 }
 
 function getRowsForSectionTabs() {
-  const searchText = state.search.trim().toLowerCase();
   return state.allRows.filter((row) => {
-    const accountMatch  = state.account === "all" || row.account === state.account;
-    const priorityMatch = state.priority === "all" || row.pctag === state.priority;
-    const searchMatch   = !searchText || [
-      row.sampleNo, row.requestNo, row.hn, row.patient,
-      row.section, row.test, row.pctag, row.lisStatus,
-      row.processStage, row.machine, row.account,
-    ].join(" ").toLowerCase().includes(searchText);
-    return accountMatch && priorityMatch && searchMatch;
+    const accountMatch = state.account === "all" || row.account === state.account;
+    return accountMatch && matchesSearch(row);
   });
 }
 
@@ -369,7 +380,7 @@ function getRequestBoardEntries(rows) {
       const hasWarning   = !hasOver && group.some((row) => !isCompleted(row) && (isWarningTat(row) || row.pctag === "ASAP"));
       const tatState     = hasOver ? "over" : hasWarning ? "warning" : allCompleted ? "completed" : "pending";
       const currentStatus = allCompleted
-        ? { label: "Completed", className: "status-completed", borderClass: "border-status-completed" }
+        ? { label: "Approve", className: "status-approve", borderClass: "border-status-approve" }
         : getDominantLisStatus(group);
 
       const sections = Object.entries(groupRows(group, (row) => row.section))
@@ -411,13 +422,13 @@ function getRequestBoardEntries(rows) {
    RENDER — FILTERS & SECTION TABS
 ══════════════════════════════════════════════════════════ */
 function render() {
-  const rows  = getVisibleRows();
-  const stats = getStats(rows);
+  const summaryRows = getSummaryRows();
+  const detailRows  = getDetailRows(summaryRows);
 
   renderFilters();
   renderSectionTabs();
-  renderDashboard1(rows, stats);
-  renderActionBoards(rows);
+  renderDashboard1(summaryRows, detailRows);
+  renderActionBoards(detailRows);
   updateLastUpdatedLabel(state.lastUpdatedAt || new Date());
 }
 
@@ -439,10 +450,10 @@ function renderFilters() {
       : accountGroups[0]?.account || "all";
   }
 
-  elements.accountFilter.value  = state.account;
-  elements.priorityFilter.value = state.priority;
-  elements.searchInput.value    = state.search;
-  elements.dateFilter.value     = state.date;
+  elements.accountFilter.value = state.account;
+  if (elements.priorityFilter) elements.priorityFilter.value = state.priority;
+  elements.searchInput.value = state.search;
+  elements.dateFilter.value = state.date;
 }
 
 function renderSectionTabs() {
@@ -474,12 +485,13 @@ function sectionTabTemplate({ active, count, label, section, statusClass }) {
 /* ══════════════════════════════════════════════════════════
    RENDER — DASHBOARD 1  (all 4 rules)
 ══════════════════════════════════════════════════════════ */
-function renderDashboard1(rows, stats) {
-  renderPriorityCards(rows);
-  renderTatStats(rows);
-  renderStatusSummary(rows, stats);
-  renderWorkloadChart(rows);
-  renderAlertPanels(rows, stats);
+function renderDashboard1(summaryRows, detailRows) {
+  renderPriorityCards(summaryRows);
+  const detailStats = getStats(detailRows);
+  renderTatStats(detailRows);
+  renderStatusSummary(detailRows, detailStats);
+  renderWorkloadChart(detailRows);
+  renderAlertPanels(detailRows, detailStats);
 }
 
 /* ── ZONE A: Zone cards ────────────────────────────────── */
@@ -516,30 +528,33 @@ function renderZoneCards(rows, stats) {
 }
 
 function renderPriorityCards(rows) {
-  const visibleSections = getAlertSections(rows, rows);
+  const visibleSections = PRIORITY_CARD_SECTIONS;
 
   const cards = [
     {
       pctag: "ASAP",
+      emptyLabel: "No very urgent records for this date",
       countEl: elements.priorityCriticalCount,
       subEl: elements.priorityCriticalSub,
       barsEl: elements.priorityCriticalBars,
     },
     {
       pctag: "STAT",
+      emptyLabel: "No urgent records for this date",
       countEl: elements.priorityUrgentCount,
       subEl: elements.priorityUrgentSub,
       barsEl: elements.priorityUrgentBars,
     },
     {
       pctag: "ROUTINE",
+      emptyLabel: "No normal active records for this date",
       countEl: elements.priorityRoutineCount,
       subEl: elements.priorityRoutineSub,
       barsEl: elements.priorityRoutineBars,
     },
   ];
 
-  cards.forEach(({ pctag, countEl, subEl, barsEl }) => {
+  cards.forEach(({ pctag, emptyLabel, countEl, subEl, barsEl }) => {
     const priorityRows = rows.filter((row) => row.pctag === pctag && !isCompleted(row));
     const withinRows = priorityRows.filter((row) => !isOverTat(row));
     const withinPct = priorityRows.length
@@ -547,7 +562,11 @@ function renderPriorityCards(rows) {
       : 0;
 
     if (countEl) countEl.textContent = formatNumber(priorityRows.length);
-    if (subEl) subEl.textContent = `Within target ${withinPct}%`;
+    if (subEl) {
+      subEl.textContent = priorityRows.length
+        ? `Within target ${withinPct}%`
+        : emptyLabel;
+    }
     if (!barsEl) return;
 
     barsEl.innerHTML = visibleSections.length
@@ -558,7 +577,7 @@ function renderPriorityCards(rows) {
             ? Math.round((sectionWithin / sectionRows.length) * 100)
             : 0;
           return `
-            <div class="zone-bar-row">
+            <div class="zone-bar-row${sectionRows.length ? "" : " is-empty"}" title="${sectionRows.length ? "" : h(`No ${section} records in this priority group`)}">
               <span class="bar-label">${h(section)}</span>
               <div class="zone-bar-track"><div class="zone-bar-fill" style="width:${sectionPct}%"></div></div>
               <span class="bar-pct">${sectionPct}%</span>
@@ -567,6 +586,12 @@ function renderPriorityCards(rows) {
         }).join("")
       : `<div class="empty-state">No section data</div>`;
   });
+
+  elements.priorityCards.forEach((card) => {
+    const isActive = card.dataset.priorityFilter === state.priority;
+    card.classList.toggle("active", isActive);
+    card.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
 }
 
 /* ── TAT stats ─────────────────────────────────────────── */
@@ -574,19 +599,35 @@ function renderTatStats(rows) {
   const active = rows.filter((r) => !isCompleted(r));
   const tatValues = active.map((r) => r.elapsedTat).filter((v) => v > 0);
 
-  function hhMm(minutes) {
-    if (!minutes || !Number.isFinite(minutes)) return "--:--";
-    const h = Math.floor(minutes / 60);
-    const m = Math.round(minutes % 60);
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  function formatTatDuration(minutes) {
+    if (!minutes || !Number.isFinite(minutes)) return "--";
+
+    const totalSeconds = Math.max(0, Math.round(minutes * 60));
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+
+    if (hours > 0) {
+      return secs > 0
+        ? `${hours}h ${mins}m ${secs}s`
+        : `${hours}h ${mins}m`;
+    }
+
+    if (mins > 0) {
+      return secs > 0
+        ? `${mins}m ${secs}s`
+        : `${mins}m`;
+    }
+
+    return `${secs}s`;
   }
 
   if (!tatValues.length) {
     elements.tatStats.innerHTML = `
-      <div class="tat-row"><span>TAT Mean</span><strong>--:--</strong></div>
-      <div class="tat-row"><span>TAT Min</span><strong>--:--</strong></div>
-      <div class="tat-row"><span>TAT Max</span><strong>--:--</strong></div>
-      <div class="tat-row"><span>TAT Median</span><strong>--:--</strong></div>
+      <div class="tat-row"><span>TAT Mean</span><strong>--</strong></div>
+      <div class="tat-row"><span>TAT Min</span><strong>--</strong></div>
+      <div class="tat-row"><span>TAT Max</span><strong>--</strong></div>
+      <div class="tat-row"><span>TAT Median</span><strong>--</strong></div>
     `;
     return;
   }
@@ -601,10 +642,10 @@ function renderTatStats(rows) {
     : sorted[mid];
 
   elements.tatStats.innerHTML = `
-    <div class="tat-row"><span>TAT Mean</span><strong>${hhMm(mean)}</strong></div>
-    <div class="tat-row"><span>TAT Min</span><strong>${hhMm(min)}</strong></div>
-    <div class="tat-row"><span>TAT Max</span><strong>${hhMm(max)}</strong></div>
-    <div class="tat-row"><span>TAT Median</span><strong>${hhMm(median)}</strong></div>
+    <div class="tat-row"><span>TAT Mean</span><strong>${formatTatDuration(mean)}</strong></div>
+    <div class="tat-row"><span>TAT Min</span><strong>${formatTatDuration(min)}</strong></div>
+    <div class="tat-row"><span>TAT Max</span><strong>${formatTatDuration(max)}</strong></div>
+    <div class="tat-row"><span>TAT Median</span><strong>${formatTatDuration(median)}</strong></div>
   `;
 }
 
@@ -698,7 +739,7 @@ function renderWorkloadChart(rows) {
 }
 
 function refreshWorkloadChartLayout() {
-  renderWorkloadChart(getVisibleRows());
+  renderWorkloadChart(getDetailRows(getSummaryRows()));
 }
 
 function bindWorkloadChartResize() {
@@ -729,10 +770,11 @@ function drawChart(canvas, rows) {
   const approved = seriesData.approved;
 
   const maxVal = Math.max(1, ...received, ...approved);
-  const padL = 28, padR = 12, padT = 12, padB = 30;
+  const padL = 36, padR = 14, padT = 14, padB = 28;
   const cW = W - padL - padR;
   const cH = H - padT - padB;
   const activeIndex = Number.isInteger(canvas.__chartActiveIndex) ? canvas.__chartActiveIndex : null;
+  const currentHour = new Date().getHours();
 
   function xPos(i) { return padL + (i / (chartHourBuckets.length - 1)) * cW; }
   function yPos(v) { return padT + cH - (v / maxVal) * cH; }
@@ -751,20 +793,34 @@ function drawChart(canvas, rows) {
     return `${smoothLinePath(data)} L ${xPos(data.length - 1).toFixed(2)} ${baseline} L ${xPos(0).toFixed(2)} ${baseline} Z`;
   }
 
-  const gridLines = [0.25, 0.5, 0.75, 1].map((f) => {
+  const gridLevels = [0.25, 0.5, 0.75, 1];
+  const gridLines = gridLevels.map((f) => {
     const y = (padT + cH * (1 - f)).toFixed(2);
-    return `<line x1="${padL}" y1="${y}" x2="${(W - padR).toFixed(2)}" y2="${y}" stroke="rgba(255,255,255,0.07)" stroke-width="1" />`;
+    const labelVal = Math.round(maxVal * f);
+    return `
+      <line x1="${padL}" y1="${y}" x2="${(W - padR).toFixed(2)}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
+      <text x="${(padL - 5).toFixed(2)}" y="${(Number(y) + 3.5).toFixed(2)}" fill="rgba(107,135,166,0.75)" font-family="Cascadia Mono, SFMono-Regular, Consolas, monospace" font-size="9" text-anchor="end">${labelVal}</text>
+    `;
   }).join("");
 
   const hourLabels = [0, 4, 8, 12, 16, 20, 23].map((h) => `
-    <text x="${xPos(h).toFixed(2)}" y="${(H - padB + 14).toFixed(2)}" fill="rgba(107,135,166,0.9)" font-family="Cascadia Mono, SFMono-Regular, Consolas, monospace" font-size="10" text-anchor="middle">${h}</text>
+    <text x="${xPos(h).toFixed(2)}" y="${(H - padB + 13).toFixed(2)}" fill="rgba(107,135,166,0.9)" font-family="Cascadia Mono, SFMono-Regular, Consolas, monospace" font-size="9" text-anchor="middle">${h}</text>
   `).join("");
 
+  /* Current-hour "now" marker */
+  const nowX = xPos(currentHour).toFixed(2);
+  const nowMarker = `
+    <line x1="${nowX}" y1="${padT}" x2="${nowX}" y2="${(padT + cH).toFixed(2)}" stroke="rgba(0,229,255,0.28)" stroke-width="1.5" stroke-dasharray="3 3"></line>
+    <text x="${nowX}" y="${(padT - 3).toFixed(2)}" fill="rgba(0,229,255,0.7)" font-family="Cascadia Mono, SFMono-Regular, Consolas, monospace" font-size="8" text-anchor="middle">NOW</text>
+  `;
+
   const hoverMarkup = activeIndex !== null ? `
-    <line x1="${xPos(activeIndex).toFixed(2)}" y1="${padT}" x2="${xPos(activeIndex).toFixed(2)}" y2="${(padT + cH).toFixed(2)}" stroke="rgba(240,247,255,0.18)" stroke-width="1.2" stroke-dasharray="5 4"></line>
-    <circle cx="${xPos(activeIndex).toFixed(2)}" cy="${yPos(received[activeIndex]).toFixed(2)}" r="4.5" fill="var(--page)" stroke="rgba(255,61,61,0.98)" stroke-width="2"></circle>
-    <circle cx="${xPos(activeIndex).toFixed(2)}" cy="${yPos(approved[activeIndex]).toFixed(2)}" r="4.5" fill="var(--page)" stroke="rgba(79,195,247,0.98)" stroke-width="2"></circle>
+    <line x1="${xPos(activeIndex).toFixed(2)}" y1="${padT}" x2="${xPos(activeIndex).toFixed(2)}" y2="${(padT + cH).toFixed(2)}" stroke="rgba(240,247,255,0.16)" stroke-width="1" stroke-dasharray="4 3"></line>
+    <circle cx="${xPos(activeIndex).toFixed(2)}" cy="${yPos(received[activeIndex]).toFixed(2)}" r="4" fill="#0b0f1a" stroke="rgba(255,61,61,1)" stroke-width="2"></circle>
+    <circle cx="${xPos(activeIndex).toFixed(2)}" cy="${yPos(approved[activeIndex]).toFixed(2)}" r="4" fill="#0b0f1a" stroke="rgba(79,195,247,1)" stroke-width="2"></circle>
   ` : "";
+
+  const uid = canvas.id || "wc";
 
   canvas.setAttribute("viewBox", `0 0 ${W} ${H}`);
   canvas.setAttribute("preserveAspectRatio", "none");
@@ -780,12 +836,23 @@ function drawChart(canvas, rows) {
     chartWidth: cW,
   };
   canvas.innerHTML = `
+    <defs>
+      <linearGradient id="${uid}-grad-recv" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="rgba(255,61,61,0.30)"/>
+        <stop offset="100%" stop-color="rgba(255,61,61,0.01)"/>
+      </linearGradient>
+      <linearGradient id="${uid}-grad-appr" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="rgba(79,195,247,0.24)"/>
+        <stop offset="100%" stop-color="rgba(79,195,247,0.01)"/>
+      </linearGradient>
+    </defs>
     <g aria-hidden="true">
       ${gridLines}
-      <path d="${smoothAreaPath(received)}" fill="rgba(255,61,61,0.12)"></path>
-      <path d="${smoothAreaPath(approved)}" fill="rgba(79,195,247,0.10)"></path>
-      <path d="${smoothLinePath(received)}" fill="none" stroke="rgba(255,61,61,0.9)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
-      <path d="${smoothLinePath(approved)}" fill="none" stroke="rgba(79,195,247,0.9)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
+      ${nowMarker}
+      <path d="${smoothAreaPath(received)}" fill="url(#${uid}-grad-recv)"></path>
+      <path d="${smoothAreaPath(approved)}" fill="url(#${uid}-grad-appr)"></path>
+      <path d="${smoothLinePath(received)}" fill="none" stroke="rgba(255,61,61,0.92)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
+      <path d="${smoothLinePath(approved)}" fill="none" stroke="rgba(79,195,247,0.92)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
       ${hoverMarkup}
       ${hourLabels}
     </g>
@@ -807,7 +874,7 @@ function bindWorkloadChartHover(canvas, rows) {
 
     if (canvas.__chartActiveIndex !== activeIndex) {
       canvas.__chartActiveIndex = activeIndex;
-      drawChart(canvas, getVisibleRows());
+      drawChart(canvas, getDetailRows(getSummaryRows()));
     }
 
     updateChartTooltip(event, canvas, activeIndex);
@@ -816,7 +883,7 @@ function bindWorkloadChartHover(canvas, rows) {
   canvas.addEventListener("mouseleave", () => {
     canvas.__chartActiveIndex = null;
     hideChartTooltip();
-    drawChart(canvas, getVisibleRows());
+    drawChart(canvas, getDetailRows(getSummaryRows()));
   });
 }
 
@@ -1102,12 +1169,15 @@ async function loadDashboard(options = {}) {
     setDashboardLoading(true);
     const url      = `/api/dashboard${params.toString() ? `?${params.toString()}` : ""}`;
     const response = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new Error(await readDashboardError(response));
+    }
     const data = await response.json();
     const rows = extractRowsFromDashboardResponse(data).map(normalizeRow);
     state.allRows      = rows;
     state.date         = data?.filters?.date?.selected || data?.date?.selected || state.date;
     state.lastUpdatedAt = data?.lastUpdatedAt || data?.meta?.generatedAt || new Date().toISOString();
+    state.latestError  = "";
     state.latestSource = "api";
     state.latestTrendKey = getDashboardQueryKey();
     state.latestTrend  = extractTrendFromDashboardResponse(data);
@@ -1116,6 +1186,7 @@ async function loadDashboard(options = {}) {
     console.error("Live dashboard load failed:", error);
     state.allRows      = [];
     state.lastUpdatedAt = new Date().toISOString();
+    state.latestError  = summarizeDashboardError(error);
     state.latestSource = "offline";
     state.latestTrendKey = "";
     state.latestTrend  = [];
@@ -1140,6 +1211,43 @@ function extractTrendFromDashboardResponse(data) {
   return normalizeTrendRows(Array.isArray(data?.trend) ? data.trend : []);
 }
 
+async function readDashboardError(response) {
+  try {
+    const payload = await response.json();
+
+    if (payload?.code === "ER_GET_CONNECTION_TIMEOUT") {
+      return "MariaDB unreachable";
+    }
+
+    if (payload?.message) {
+      return String(payload.message).trim();
+    }
+  } catch {}
+
+  return `HTTP ${response.status}`;
+}
+
+function summarizeDashboardError(error) {
+  const message = String(error?.message || "").trim();
+
+  if (!message) {
+    return "Dashboard error";
+  }
+
+  if (
+    message.includes("ER_GET_CONNECTION_TIMEOUT") ||
+    message.includes("MariaDB unreachable")
+  ) {
+    return "MariaDB unreachable";
+  }
+
+  if (message.includes("Failed to fetch")) {
+    return "Dashboard API unreachable";
+  }
+
+  return message;
+}
+
 function getDashboardQueryKey() {
   return JSON.stringify({
     account: state.account || "all",
@@ -1162,7 +1270,11 @@ function setDashboardLoading(isLoading) {
 ══════════════════════════════════════════════════════════ */
 function updateLastUpdatedLabel(value) {
   const date   = value instanceof Date ? value : new Date(value);
-  const source = state.latestSource === "api" ? "LIVE" : "NO LIVE DATA";
+  const source = state.latestError
+    ? `DB ERROR: ${state.latestError}`
+    : state.latestSource === "api"
+      ? "LIVE"
+      : "NO LIVE DATA";
   elements.lastUpdated.textContent = `Updated: ${formatClockValue(date)} | ${source}`;
 }
 
@@ -1175,13 +1287,18 @@ function updateLiveBadge() {
     elements.liveBadge.textContent = "Refreshing…";
     return;
   }
-  const dataSeconds = nextAutoRefreshAt
+  const nextDataSeconds = nextAutoRefreshAt
     ? Math.max(0, Math.ceil((nextAutoRefreshAt - Date.now()) / 1000))
-    : 30;
+    : Math.round(AUTO_REFRESH_MS / 1000);
+  const dataText = state.latestError
+    ? (AUTO_REFRESH_ENABLED ? `DB retry ${nextDataSeconds}s` : "DB offline")
+    : AUTO_REFRESH_ENABLED
+      ? `Data ${nextDataSeconds}s`
+      : "Data paused";
 
   let viewText = "";
   if (state.viewMode === "auto") {
-    if (isViewRotationPaused) {
+    if (!VIEW_ROTATION_ENABLED || isViewRotationPaused) {
       viewText = "View paused";
     } else {
       const viewSeconds = nextViewRotationAt
@@ -1195,7 +1312,7 @@ function updateLiveBadge() {
     viewText = "Request only";
   }
 
-  elements.liveBadge.textContent = `Data ${dataSeconds}s | ${viewText}`;
+  elements.liveBadge.textContent = `${dataText} | ${viewText}`;
 }
 
 function updateTick() {
@@ -1204,6 +1321,13 @@ function updateTick() {
 }
 
 function startAutoRefreshLoop() {
+  if (!AUTO_REFRESH_ENABLED) {
+    nextAutoRefreshAt = 0;
+    if (autoRefreshIntervalId) clearInterval(autoRefreshIntervalId);
+    autoRefreshIntervalId = null;
+    updateLiveBadge();
+    return;
+  }
   nextAutoRefreshAt = Date.now() + AUTO_REFRESH_MS;
   updateLiveBadge();
   if (autoRefreshIntervalId) clearInterval(autoRefreshIntervalId);
@@ -1237,6 +1361,12 @@ function rotateDashboardPage() {
 
 function startViewRotationLoop() {
   stopViewRotationLoop();
+  if (!VIEW_ROTATION_ENABLED) {
+    isViewRotationPaused = true;
+    nextViewRotationAt = 0;
+    updateLiveBadge();
+    return;
+  }
   if (state.viewMode !== "auto" || isViewRotationPaused) { nextViewRotationAt = 0; updateLiveBadge(); return; }
   nextViewRotationAt = Date.now() + VIEW_ROTATION_MS;
   updateLiveBadge();
@@ -1300,11 +1430,12 @@ function bindEvents() {
     render();
   });
 
-  elements.priorityFilter.addEventListener("change", (event) => {
-    state.priority = event.target.value;
-    state.section  = "all";
-    render();
-  });
+  if (elements.priorityFilter) {
+    elements.priorityFilter.addEventListener("change", (event) => {
+      state.priority = event.target.value;
+      render();
+    });
+  }
 
   elements.searchInput.addEventListener("input", (event) => {
     state.search = event.target.value;
@@ -1324,6 +1455,21 @@ function bindEvents() {
     if (!button) return;
     state.section = button.dataset.section || "all";
     render();
+  });
+
+  elements.priorityCards.forEach((card) => {
+    const togglePriorityFocus = () => {
+      const value = card.dataset.priorityFilter || "all";
+      state.priority = state.priority === value ? "all" : value;
+      render();
+    };
+
+    card.addEventListener("click", togglePriorityFocus);
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      togglePriorityFocus();
+    });
   });
 
   elements.billboardControls.forEach((button) => {
